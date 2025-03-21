@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { config } from 'dotenv';
 import fetch from 'node-fetch';
 
@@ -26,6 +26,11 @@ const client = new Client({
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+const GOOGLE_SEARCH_API = 'https://www.googleapis.com/customsearch/v1';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
+
+const searchResultsCache = new Map(); 
 
 // Global error handler
 process.on('unhandledRejection', error => {
@@ -69,7 +74,29 @@ const commands = [
                     { name: 'Sedang', value: 'medium' },
                     { name: 'Panjang', value: 'long' }
                 )
+        ),
+    new SlashCommandBuilder()
+        .setName('translate')
+        .setDescription('Menerjemahkan teks')
+        .addStringOption(option =>
+            option.setName('text')
+                .setDescription('Teks yang ingin diterjemahkan')
+                .setRequired(true)
         )
+        .addStringOption(option =>
+            option.setName('language')
+                .setDescription('Bahasa tujuan (contoh: en, id, es, fr)')
+                .setRequired(true)
+        ),
+    new SlashCommandBuilder()
+        .setName('search')
+        .setDescription('Mencari informasi di Google')
+        .addStringOption(option =>
+            option.setName('query')
+                .setDescription('Kata kunci pencarian')
+                .setRequired(true)
+        )
+        
 ].map(command => command.toJSON());
 
 // 📊 Stats Counter
@@ -103,6 +130,26 @@ async function callDeepSeekAPI(messages) {
     }
 
     return data.choices[0].message?.content || 'Maaf, tidak ada respons dari AI.';
+}
+
+async function googleSearch(query, page = 1) {
+    const start = (page - 1) * 10 + 1; // Google uses 1-based indexing
+    // Add num=10 parameter to request maximum results per page
+    const url = `${GOOGLE_SEARCH_API}?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CSE_ID}&q=${encodeURIComponent(query)}&start=${start}&num=10`;
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.error(`Google Search API Error: ${response.status}`);
+            return [];
+        }
+        
+        const data = await response.json();
+        return data.items || [];
+    } catch (error) {
+        console.error('Error fetching search results:', error);
+        return [];
+    }
 }
 
 // 🚀 Bot Siap & Deploy Slash Commands
@@ -141,7 +188,7 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     try {
         // Hanya proses command interaksi
-        if (!interaction.isChatInputCommand()) return;
+        if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
 
         const { commandName } = interaction;
         console.log(`📝 Command dijalankan: ${commandName} oleh ${interaction.user.tag}`);
@@ -153,6 +200,8 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(
                     '`/ask [pertanyaan]` → Menjawab pertanyaan dengan DeepSeek AI\n' +
                     '`/summarize [text]` → Meringkas teks panjang\n' +
+                    '`/translate  [text] [languange]` → Menerjemahkan bahasa ke bahasa lain\n' +
+                    '`/search [text]` → Cari sesuatu informasi di Google\n' +
                     '`/ping` → Cek latensi bot\n' +
                     '`/stats` → Melihat jumlah pertanyaan yang telah dijawab\n' +
                     '`/help` → Menampilkan daftar perintah\n'
@@ -276,6 +325,111 @@ client.on('interactionCreate', async interaction => {
                 });
             }
         }
+
+        if (commandName === 'translate') {
+            const text = interaction.options.getString('text');
+            const language = interaction.options.getString('language');
+    
+            if (!text.trim()) {
+                return await interaction.reply({ content: '⚠️ Teks tidak boleh kosong!', ephemeral: true });
+            }
+    
+            await interaction.deferReply();
+    
+            try {
+                const response = await fetch(DEEPSEEK_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [
+                            { role: 'user', content: `Terjemahkan teks ini ke bahasa ${language}: "${text}"` }
+                        ]
+                    })
+                });
+    
+                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                const data = await response.json();
+                const translation = data.choices[0].message?.content || 'Terjemahan tidak tersedia.';
+    
+                const embed = new EmbedBuilder()
+                    .setColor(0x0099ff)
+                    .setTitle('🌍 Terjemahan')
+                    .setDescription(translation.substring(0, 4096));
+    
+                await interaction.editReply({ embeds: [embed] });
+            } catch (error) {
+                console.error('❌ Error saat menerjemahkan:', error);
+                await interaction.editReply({ content: '🚨 Terjadi kesalahan saat menerjemahkan.' });
+            }
+        }
+        if (commandName === 'search') {
+            const query = interaction.options.getString('query');
+            const results = await googleSearch(query);
+            if (results.length === 0) {
+                return interaction.reply({ content: '❌ Tidak ada hasil ditemukan.', ephemeral: true });
+            }
+    
+            searchResultsCache.set(interaction.user.id, { query, page: 1, results });
+            await sendSearchResults(interaction, query, results, 1);
+        }
+    
+        if (interaction.isButton()) {
+            const [action, userId] = interaction.customId.split('_');
+            
+            // Check if this button belongs to the user
+            if (userId !== interaction.user.id) {
+                return interaction.reply({ 
+                    content: '❌ Ini bukan hasil pencarianmu!', 
+                    ephemeral: true 
+                });
+            }
+            
+            // Get search data from cache
+            const searchData = searchResultsCache.get(userId);
+            if (!searchData) {
+                return interaction.reply({ 
+                    content: '❌ Data pencarian tidak ditemukan atau telah kedaluwarsa!', 
+                    ephemeral: true 
+                });
+            }
+            
+            // Update page based on button action
+            let newPage = searchData.page;
+            if (action === 'next') {
+                newPage++;
+            } else if (action === 'prev' && newPage > 1) {
+                newPage--;
+            }
+            
+            // Only fetch new results if page actually changed
+            if (newPage !== searchData.page) {
+                console.log(`Changing page from ${searchData.page} to ${newPage}`);
+                const newResults = await googleSearch(searchData.query, newPage);
+                
+                // Update cache
+                searchResultsCache.set(userId, {
+                    query: searchData.query,
+                    page: newPage,
+                    results: newResults,
+                    timestamp: Date.now()
+                });
+                
+                // Send updated results
+                await sendSearchResults(interaction, searchData.query, newResults, newPage, true);
+            } else {
+                // If no page change (e.g., trying to go back from page 1), just acknowledge
+                await interaction.update({ components: [createPaginationButtons(userId, newPage, searchData.results.length)] });
+            }
+            
+            return; // Exit early for button interactions
+        }
+    
+    
+        
     } catch (error) {
         console.error('❌ Error umum pada interaksi:', error);
         // Coba kirim pesan error jika interaksi belum direspons
@@ -293,6 +447,49 @@ client.on('interactionCreate', async interaction => {
         }
     }
 });
+
+// Create a separate function for building pagination buttons
+function createPaginationButtons(userId, currentPage, resultsCount) {
+    return new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`prev_${userId}`)
+                .setLabel('⬅️ Previous')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(currentPage <= 1),
+            new ButtonBuilder()
+                .setCustomId(`next_${userId}`)
+                .setLabel('Next ➡️')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(resultsCount < 10) // If less than 10 results, probably no more pages
+        );
+}
+
+// Update sendSearchResults to use the new button creator
+async function sendSearchResults(interaction, query, results, page, isUpdate = false) {
+    const embed = new EmbedBuilder()
+        .setTitle(`🔍 Hasil Pencarian: ${query}`)
+        .setColor(0x3498db)
+        .setFooter({ text: `Halaman ${page}` })
+        .setTimestamp();
+    
+    // Add each result to the embed
+    results.forEach((result, index) => {
+        embed.addFields({
+            name: `${index + 1}. ${result.title}`,
+            value: `[Buka](${result.link})\n${result.snippet || 'Tidak ada deskripsi'}`
+        });
+    });
+
+    const buttons = createPaginationButtons(interaction.user.id, page, results.length);
+
+    if (isUpdate) {
+        await interaction.update({ embeds: [embed], components: [buttons] });
+    } else {
+        await interaction.reply({ embeds: [embed], components: [buttons] });
+    }
+}
+
 
 // Logging saat bot terhubung/terputus
 client.on('disconnect', event => {
