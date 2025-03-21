@@ -14,19 +14,22 @@ const client = new Client({
 
 const BOT_PREFIX = '!';
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
-const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
+const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'; // Sesuaikan jika ada perubahan
 
-client.on('ready', () => {
+client.once('ready', () => {
     console.log(`🤖 Bot ${client.user.tag} is online!`);
 });
 
 client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+    if (message.author.bot || !message.content.startsWith(BOT_PREFIX)) return;
     
-    const userInput = message.content;
-    if (!userInput.startsWith(BOT_PREFIX)) return;
-
+    const userInput = message.content.slice(BOT_PREFIX.length); // Hapus prefix dari input user
+    
     try {
+        await message.channel.sendTyping(); // Memberi tanda bahwa bot sedang mengetik
+        
+        const startTime = Date.now(); // Simpan waktu sebelum request API
+        
         const response = await fetch(DEEPSEEK_API_URL, {
             method: 'POST',
             headers: {
@@ -35,26 +38,34 @@ client.on('messageCreate', async (message) => {
             },
             body: JSON.stringify({
                 model: 'deepseek-chat',
-                messages: [{ role: 'user', content: userInput.slice(BOT_PREFIX.length) }]
+                messages: [{ role: 'user', content: userInput }]
             })
         });
+
+        const endTime = Date.now(); // Simpan waktu setelah menerima response
+        console.log(`⏳ Waktu respons API: ${endTime - startTime} ms`);
+
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
         const data = await response.json();
         const aiReply = data.choices?.[0]?.message?.content || 'Maaf, tidak ada respons dari AI.';
 
-        // Jika pesan lebih panjang dari 4096 karakter, potong agar tidak error di Embed
-        const trimmedReply = aiReply.substring(0, 4096);
+        // Jika lebih dari 4096 karakter, bagi menjadi beberapa Embed
+        const MAX_EMBED_LENGTH = 4096;
+        const messageChunks = aiReply.match(/.{1,4096}/gs) || [];
 
-        const embed = new EmbedBuilder()
-            .setColor(0x0099ff)
-            .setTitle('💡 Jawaban dari AI')
-            .setDescription(trimmedReply);
+        for (let i = 0; i < messageChunks.length; i++) {
+            const embed = new EmbedBuilder()
+                .setColor(0x0099ff)
+                .setTitle(i === 0 ? '💡 Jawaban dari AI' : `🔹 Lanjutan (${i + 1})`)
+                .setDescription(messageChunks[i]);
 
-        await message.reply({ embeds: [embed] });
-        
+            await message.reply({ embeds: [embed] });
+        }
+
     } catch (error) {
         console.error('❌ Error DeepSeek AI:', error);
-        await message.reply('Terjadi kesalahan, coba lagi nanti.');
+        await message.reply('Terjadi kesalahan saat memproses permintaan. Coba lagi nanti.');
     }
 });
 
