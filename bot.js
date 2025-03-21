@@ -76,7 +76,13 @@ client.on('messageCreate', async (message) => {
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
         const data = await response.json();
-        const aiReply = data.choices?.[0]?.message?.content || 'Maaf, tidak ada respons dari AI.';
+        console.log('🔍 Response dari API DeepSeek:', JSON.stringify(data, null, 2));
+        
+        if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+            throw new Error('DeepSeek API mengembalikan respons kosong atau tidak valid.');
+        }
+        
+        const aiReply = data.choices[0].message?.content || 'Maaf, tidak ada respons dari AI.';
         statsCount++;
 
         const MAX_EMBED_LENGTH = 4096;
