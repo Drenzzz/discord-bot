@@ -23,7 +23,15 @@ client.once('ready', () => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.content.startsWith(BOT_PREFIX)) return;
     
-    const userInput = message.content.slice(BOT_PREFIX.length); // Hapus prefix dari input user
+    const args = message.content.slice(BOT_PREFIX.length).trim().split(/\s+/);
+    const command = args.shift().toLowerCase();
+
+    if (command !== 'ask') return; // Hanya tangani perintah !ask
+
+    const userInput = args.join(' ');
+    if (!userInput) {
+        return message.reply('❌ Silakan masukkan pertanyaan setelah `!ask`. Contoh: `!ask Apa itu AI?`');
+    }
     
     try {
         await message.channel.sendTyping(); // Memberi tanda bahwa bot sedang mengetik
