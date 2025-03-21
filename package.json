@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "bot.js",
+  "type": "module",
   "scripts": {
-    "start": "node bot.js",
+    "start": "concurrently \"node bot.js\" \"node bot-music.js\"",
     "dev": "nodemon bot.js"
   },
   "author": "",
@@ -12,7 +13,12 @@
   "dependencies": {
     "discord.js": "^14.18.0",
     "dotenv": "^16.4.7",
-    "openai": "^4.89.0"
+    "openai": "^4.89.0",
+    "concurrently": "^8.2.2",
+    "discord-player": "^6.7.0",
+    "@discordjs/voice": "^0.16.0",
+    "ytdl-core": "^4.11.1",
+    "play-dl": "^1.6.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"
