@@ -10,6 +10,7 @@
 - ✅ **/translate** → Translate text between multiple languages quickly and accurately
 - ✅ **/search** → Find relevant information from the web in seconds
 - ✅ **/convert-currency** → Convert currency values based on real-time exchange rates
+- ✅ **/weather** → Displays current weather information using OpenWeather API
 - ✅ **/ping** → Checks bot latency
 - ✅ **/stats** → Displays the number of answered questions
 - ✅ **/help** → Shows a list of commands
@@ -38,6 +39,7 @@ DEEPSEEK_API_KEY=your_deepseek_api_key
 GOOGLE_API_KEY=your_google_api_key_here
 GOOGLE_CSE_ID=your_custom_search_engine_id_here
 EXCHANGE_RATE_API_KEY=your_exchange_rate_api_key
+OPENWEATHER_API_KEY=your_openweather_rate_api_key
 ```
 
 ### **4️⃣ Run the Bot**

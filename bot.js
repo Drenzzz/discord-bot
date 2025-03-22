@@ -36,6 +36,9 @@ const searchResultsCache = new Map();
 const API_KEY = process.env.EXCHANGE_RATE_API_KEY;
 const BASE_URL = `https://api.exchangerate.host`;
 
+const API_KEY_WEATHER = process.env.OPENWEATHER_API_KEY;
+const WEATHER_URL = `https://api.openweathermap.org/data/2.5/weather`;
+
 // Global error handler
 process.on('unhandledRejection', error => {
     console.error('❌ Unhandled promise rejection:', error);
@@ -114,7 +117,14 @@ const commands = [
         .addNumberOption(option => 
             option.setName('amount')
                 .setDescription('Jumlah yang ingin dikonversi')
-                .setRequired(true))
+                .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('weather')
+        .setDescription('Menampilkan informasi cuaca terkini berdasarkan kota')
+        .addStringOption(option =>
+            option.setName('city')
+                .setDescription('Nama kota yang ingin dicek cuacanya')
+                .setRequired(true)),
 
 ].map(command => command.toJSON());
 
@@ -264,6 +274,7 @@ client.on('interactionCreate', async interaction => {
                     '`/translate  [text] [languange]` → Menerjemahkan bahasa ke bahasa lain\n' +
                     '`/search [text]` → Cari sesuatu informasi di Google\n' +
                     '`/convert-currency [from] [to] [amount]` → Mengonversi mata uang berdasarkan kurs terkini\n' +
+                    '`/weather [city]` → Menampilkan informasi cuaca terkini\n' + 
                     '`/ping` → Cek latensi bot\n' +
                     '`/stats` → Melihat jumlah pertanyaan yang telah dijawab\n' +
                     '`/help` → Menampilkan daftar perintah\n'
@@ -516,7 +527,42 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply('⚠️ Terjadi kesalahan saat mengambil data mata uang.');
             }
         }
-                    
+
+        if (commandName === 'weather') {
+            const city = interaction.options.getString('city');
+            
+            if (!city) {
+                return interaction.reply('❌ Harap masukkan nama kota yang valid.');
+            }
+    
+            try {
+                await interaction.deferReply(); // Memberi tanda bahwa bot sedang memproses
+    
+                const response = await fetch(`${WEATHER_URL}?q=${city}&appid=${API_KEY_WEATHER}&units=metric&lang=id`);
+                const data = await response.json();
+    
+                if (data.cod !== 200) {
+                    return interaction.editReply(`❌ Kota tidak ditemukan atau terjadi kesalahan.`);
+                }
+    
+                const weatherDesc = data.weather[0].description;
+                const temp = data.main.temp;
+                const feelsLike = data.main.feels_like;
+                const humidity = data.main.humidity;
+                const windSpeed = data.wind.speed;
+    
+                await interaction.editReply(`🌤 **Cuaca di ${city}**:
+🌡 Suhu: **${temp}°C** (Terasa seperti **${feelsLike}°C**)
+💧 Kelembaban: **${humidity}%**
+🌬 Kecepatan Angin: **${windSpeed} m/s**
+📖 Deskripsi: **${weatherDesc}**`);
+                
+            } catch (error) {
+                console.error(error);
+                await interaction.editReply('⚠️ Terjadi kesalahan saat mengambil data cuaca.');
+            }
+        }
+            
     } catch (error) {
         console.error('❌ Error umum pada interaksi:', error);
         // Coba kirim pesan error jika interaksi belum direspons
