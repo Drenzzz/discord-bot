@@ -7,6 +7,7 @@
 ## **🚀 Key Features**
 - ✅ **/ask** → Answers questions using DeepSeek AI
 - ✅ **/summarize** → Generate concise and clear summaries from long texts using DeepSeek AI
+- ✅ **/translate** → Translate text between multiple languages quickly and accurately
 - ✅ **/ping** → Checks bot latency
 - ✅ **/stats** → Displays the number of answered questions
 - ✅ **/help** → Shows a list of commands

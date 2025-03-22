@@ -69,7 +69,21 @@ const commands = [
                     { name: 'Sedang', value: 'medium' },
                     { name: 'Panjang', value: 'long' }
                 )
+        ),
+        new SlashCommandBuilder()
+        .setName('translate')
+        .setDescription('Menerjemahkan teks')
+        .addStringOption(option =>
+            option.setName('text')
+                .setDescription('Teks yang ingin diterjemahkan')
+                .setRequired(true)
         )
+        .addStringOption(option =>
+            option.setName('language')
+                .setDescription('Bahasa tujuan (contoh: en, id, es, fr)')
+                .setRequired(true)
+        )
+
 ].map(command => command.toJSON());
 
 // 📊 Stats Counter
@@ -153,6 +167,7 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(
                     '`/ask [pertanyaan]` → Menjawab pertanyaan dengan DeepSeek AI\n' +
                     '`/summarize [text]` → Meringkas teks panjang\n' +
+                    '`/translate  [text] [languange]` → Menerjemahkan bahasa ke bahasa lain\n' +
                     '`/ping` → Cek latensi bot\n' +
                     '`/stats` → Melihat jumlah pertanyaan yang telah dijawab\n' +
                     '`/help` → Menampilkan daftar perintah\n'
@@ -276,6 +291,47 @@ client.on('interactionCreate', async interaction => {
                 });
             }
         }
+
+        if (commandName === 'translate') {
+            const text = interaction.options.getString('text');
+            const language = interaction.options.getString('language');
+    
+            if (!text.trim()) {
+                return await interaction.reply({ content: '⚠️ Teks tidak boleh kosong!', ephemeral: true });
+            }
+    
+            await interaction.deferReply();
+    
+            try {
+                const response = await fetch(DEEPSEEK_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: 'deepseek-chat',
+                        messages: [
+                            { role: 'user', content: `Terjemahkan teks ini ke bahasa ${language}: "${text}"` }
+                        ]
+                    })
+                });
+    
+                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                const data = await response.json();
+                const translation = data.choices[0].message?.content || 'Terjemahan tidak tersedia.';
+    
+                const embed = new EmbedBuilder()
+                    .setColor(0x0099ff)
+                    .setTitle('🌍 Terjemahan')
+                    .setDescription(translation.substring(0, 4096));
+    
+                await interaction.editReply({ embeds: [embed] });
+            } catch (error) {
+                console.error('❌ Error saat menerjemahkan:', error);
+                await interaction.editReply({ content: '🚨 Terjadi kesalahan saat menerjemahkan.' });
+            }
+        }        
     } catch (error) {
         console.error('❌ Error umum pada interaksi:', error);
         // Coba kirim pesan error jika interaksi belum direspons
