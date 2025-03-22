@@ -33,6 +33,9 @@ const GOOGLE_CSE_ID = process.env.GOOGLE_CSE_ID;
 
 const searchResultsCache = new Map();
 
+const API_KEY = process.env.EXCHANGE_RATE_API_KEY;
+const BASE_URL = `https://api.exchangerate.host`;
+
 // Global error handler
 process.on('unhandledRejection', error => {
     console.error('❌ Unhandled promise rejection:', error);
@@ -96,7 +99,22 @@ const commands = [
             option.setName('query')
                 .setDescription('Kata kunci pencarian')
                 .setRequired(true)
-        )
+        ),
+    new SlashCommandBuilder()
+        .setName('convert-currency')
+        .setDescription('Konversi mata uang berdasarkan nilai tukar terbaru.')
+        .addStringOption(option => 
+            option.setName('from')
+                .setDescription('Kode mata uang asal (contoh: USD) , wajib 3 huruf besar')
+                .setRequired(true))
+        .addStringOption(option => 
+            option.setName('to')
+                .setDescription('Kode mata uang tujuan (contoh: IDR , wajib 3 huruf besar)')
+                .setRequired(true))
+        .addNumberOption(option => 
+            option.setName('amount')
+                .setDescription('Jumlah yang ingin dikonversi')
+                .setRequired(true))
 
 ].map(command => command.toJSON());
 
@@ -245,6 +263,7 @@ client.on('interactionCreate', async interaction => {
                     '`/summarize [text]` → Meringkas teks panjang\n' +
                     '`/translate  [text] [languange]` → Menerjemahkan bahasa ke bahasa lain\n' +
                     '`/search [text]` → Cari sesuatu informasi di Google\n' +
+                    '`/convert-currency [from] [to] [amount]` → Mengonversi mata uang berdasarkan kurs terkini\n' +
                     '`/ping` → Cek latensi bot\n' +
                     '`/stats` → Melihat jumlah pertanyaan yang telah dijawab\n' +
                     '`/help` → Menampilkan daftar perintah\n'
@@ -472,6 +491,32 @@ client.on('interactionCreate', async interaction => {
             return; // Exit early for button interactions
         }
 
+        if (commandName === 'convert-currency') {
+            const from = interaction.options.getString('from').toUpperCase();
+            const to = interaction.options.getString('to').toUpperCase();
+            const amount = interaction.options.getNumber('amount');
+        
+            try {
+                await interaction.deferReply();
+        
+                // Gunakan access_key di request
+                const response = await fetch(`${BASE_URL}/convert?from=${from}&to=${to}&amount=${amount}&access_key=${API_KEY}`);
+                const data = await response.json();
+        
+                console.log("API Response:", data); // Debugging log
+        
+                if (!data.success) {
+                    return interaction.editReply(`❌ Error: ${data.error.info}`);
+                }
+        
+                const converted = data.result.toFixed(2);
+                await interaction.editReply(`💱 **${amount} ${from}** = **${converted} ${to}**`);
+            } catch (error) {
+                console.error("API Fetch Error:", error);
+                await interaction.editReply('⚠️ Terjadi kesalahan saat mengambil data mata uang.');
+            }
+        }
+                    
     } catch (error) {
         console.error('❌ Error umum pada interaksi:', error);
         // Coba kirim pesan error jika interaksi belum direspons
