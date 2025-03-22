@@ -8,6 +8,7 @@
 - ✅ **/ask** → Answers questions using DeepSeek AI
 - ✅ **/summarize** → Generate concise and clear summaries from long texts using DeepSeek AI
 - ✅ **/translate** → Translate text between multiple languages quickly and accurately
+- ✅ **/search** → Find relevant information from the web in seconds
 - ✅ **/ping** → Checks bot latency
 - ✅ **/stats** → Displays the number of answered questions
 - ✅ **/help** → Shows a list of commands
@@ -33,6 +34,8 @@ Add the following configuration:
 ```env
 DISCORD_TOKEN=your_bot_token
 DEEPSEEK_API_KEY=your_deepseek_api_key
+GOOGLE_API_KEY=your_google_api_key_here
+GOOGLE_CSE_ID=your_custom_search_engine_id_here
 ```
 
 ### **4️⃣ Run the Bot**
