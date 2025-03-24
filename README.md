@@ -11,6 +11,7 @@
 - ✅ **/search** → Find relevant information from the web in seconds
 - ✅ **/convert-currency** → Convert currency values based on real-time exchange rates
 - ✅ **/weather** → Displays current weather information using OpenWeather API
+- ✅ **/qr-gen** → Generate QR Code from given text or URL
 - ✅ **/ping** → Checks bot latency
 - ✅ **/stats** → Displays the number of answered questions
 - ✅ **/help** → Shows a list of commands

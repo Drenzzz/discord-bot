@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } from 'discord.js';
 import { config } from 'dotenv';
 import fetch from 'node-fetch';
 
@@ -125,6 +125,15 @@ const commands = [
             option.setName('city')
                 .setDescription('Nama kota yang ingin dicek cuacanya')
                 .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('qr-gen')
+        .setDescription('Menghasilkan QR Code dari teks atau URL')
+        .addStringOption(option =>
+            option.setName('text')
+                .setDescription('Teks atau URL yang ingin dijadikan QR Code')
+                .setRequired(true)
+        ),
+            
 
 ].map(command => command.toJSON());
 
@@ -275,6 +284,7 @@ client.on('interactionCreate', async interaction => {
                     '`/search [text]` → Cari sesuatu informasi di Google\n' +
                     '`/convert-currency [from] [to] [amount]` → Mengonversi mata uang berdasarkan kurs terkini\n' +
                     '`/weather [city]` → Menampilkan informasi cuaca terkini\n' + 
+                    '`/qr-gen [url/text]` → Menghasilkan QR Code dari teks atau URL yang diberikan\n' + 
                     '`/ping` → Cek latensi bot\n' +
                     '`/stats` → Melihat jumlah pertanyaan yang telah dijawab\n' +
                     '`/help` → Menampilkan daftar perintah\n'
@@ -562,7 +572,41 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply('⚠️ Terjadi kesalahan saat mengambil data cuaca.');
             }
         }
-            
+
+        if (commandName === 'qr-gen') {
+            const text = interaction.options.getString('text');
+        
+            if (!text.trim()) {
+                return interaction.reply({ content: '❌ Teks tidak boleh kosong!', ephemeral: true });
+            }
+        
+            await interaction.deferReply();
+        
+            try {
+                const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(text)}&size=300&format=png`;
+        
+                // Fetch QR Code sebagai buffer
+                const response = await fetch(qrUrl);
+                const buffer = await response.arrayBuffer();
+        
+                // Kirim QR Code sebagai attachment
+                const attachment = new AttachmentBuilder(Buffer.from(buffer), { name: 'qrcode.png' });
+        
+                const embed = new EmbedBuilder()
+                    .setColor(0x3498db)
+                    .setTitle('📌 QR Code Generated')
+                    .setDescription(`QR Code untuk teks: ${text}`)
+                    .setFooter({ text: 'Dibuat dengan QuickChart API' })
+                    .setImage('attachment://qrcode.png'); // Gambar dari attachment
+        
+                await interaction.editReply({ embeds: [embed], files: [attachment] });
+            } catch (error) {
+                console.error('❌ Error saat membuat QR Code:', error);
+                await interaction.editReply('⚠️ Terjadi kesalahan saat membuat QR Code.');
+            }
+        }        
+                     
+
     } catch (error) {
         console.error('❌ Error umum pada interaksi:', error);
         // Coba kirim pesan error jika interaksi belum direspons
