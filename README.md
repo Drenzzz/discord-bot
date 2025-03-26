@@ -12,6 +12,10 @@
 - ✅ **/convert-currency** → Convert currency values based on real-time exchange rates
 - ✅ **/weather** → Displays current weather information using OpenWeather API
 - ✅ **/qr-gen** → Generate QR Code from given text or URL
+- ✅ **/gachawaifu** → Get a random waifu from the AniList database  
+- ✅ **/findwaifu [name]** → Search for a waifu by character name  
+- ✅ **/klaimwaifu** → Save a waifu to your personal collection  
+- ✅ **/leaderboard-waifu** → View the ranking of users with the most claimed waifus  
 - ✅ **/ping** → Checks bot latency
 - ✅ **/stats** → Displays the number of answered questions
 - ✅ **/help** → Shows a list of commands

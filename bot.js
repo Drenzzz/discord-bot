@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } from 'discord.js';
 import { config } from 'dotenv';
 import fetch from 'node-fetch';
+import sqlite3 from 'sqlite3';
 
 // Load .env file
 config();
@@ -38,6 +39,8 @@ const BASE_URL = `https://api.exchangerate.host`;
 
 const API_KEY_WEATHER = process.env.OPENWEATHER_API_KEY;
 const WEATHER_URL = `https://api.openweathermap.org/data/2.5/weather`;
+
+const userLastGachaWaifu = new Map();
 
 // Global error handler
 process.on('unhandledRejection', error => {
@@ -133,6 +136,23 @@ const commands = [
                 .setDescription('Teks atau URL yang ingin dijadikan QR Code')
                 .setRequired(true)
         ),
+    new SlashCommandBuilder()
+        .setName('gachawaifu')
+        .setDescription('Dapatkan waifu acak dari AniList'),
+    new SlashCommandBuilder()
+        .setName('findwaifu')
+        .setDescription('Cari waifu berdasarkan nama')
+        .addStringOption(option => 
+            option.setName('nama')
+            .setDescription('Nama waifu yang dicari')
+            .setRequired(true)
+        ),
+    new SlashCommandBuilder()
+        .setName('klaimwaifu')
+        .setDescription('Klaim waifu terakhir yang di-gacha'),
+    new SlashCommandBuilder()
+        .setName('topwaifu')
+        .setDescription('Lihat peringkat user dengan waifu terbanyak')
             
 
 ].map(command => command.toJSON());
@@ -140,6 +160,18 @@ const commands = [
 // 📊 Stats Counter
 let statsCount = 0;
 let summarizeCount = 0;
+let lastGachaWaifu = null;
+
+const db = new sqlite3.Database('./databases/waifu.db');
+db.run(`
+    CREATE TABLE IF NOT EXISTS user_waifus (
+        user_id TEXT,
+        waifu_id INTEGER,
+        waifu_name TEXT,
+        waifu_image TEXT,
+        claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+`);
 
 // Fungsi untuk memanggil DeepSeek API
 async function callDeepSeekAPI(messages) {
@@ -232,6 +264,52 @@ async function sendSearchResults(interaction, query, results, page, isUpdate = f
     }
 }
 
+async function fetchRandomWaifu() {
+    const query = `
+        query {
+            Page(page: 1, perPage: 50) {
+                characters(sort: FAVOURITES_DESC) {
+                    id
+                    name {
+                        full
+                    }
+                    image {
+                        large
+                    }
+                    favourites
+                }
+            }
+        }
+    `;
+
+    try {
+        const response = await fetch('https://graphql.anilist.co', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ query })
+        });
+
+        const data = await response.json();
+        const characters = data.data.Page.characters;
+
+        // Tambahkan randomisasi dengan memilih karakter secara acak
+        const randomCharacter = characters[Math.floor(Math.random() * characters.length)];
+        
+        return {
+            id: randomCharacter.id,
+            name: randomCharacter.name.full,
+            image: randomCharacter.image.large,
+            favourites: randomCharacter.favourites
+        };
+    } catch (error) {
+        console.error('Error fetching waifu:', error);
+        return null;
+    }
+}
+
 // 🚀 Bot Siap & Deploy Slash Commands
 client.once('ready', async () => {
     console.log(`🤖 Bot ${client.user.tag} is online!`);
@@ -285,6 +363,10 @@ client.on('interactionCreate', async interaction => {
                     '`/convert-currency [from] [to] [amount]` → Mengonversi mata uang berdasarkan kurs terkini\n' +
                     '`/weather [city]` → Menampilkan informasi cuaca terkini\n' + 
                     '`/qr-gen [url/text]` → Menghasilkan QR Code dari teks atau URL yang diberikan\n' + 
+                    '`/gachawaifu` → Mendapatkan waifu acak dari database AniList\n' +
+                    '`/findwaifu [nama]` → Mencari waifu berdasarkan nama karakter\n' +
+                    '`/klaimwaifu` → Menyimpan waifu favorit ke dalam koleksi pribadi\n' +
+                    '`/topwaifu` → Melihat ranking user dengan koleksi waifu terbanyak\n' +
                     '`/ping` → Cek latensi bot\n' +
                     '`/stats` → Melihat jumlah pertanyaan yang telah dijawab\n' +
                     '`/help` → Menampilkan daftar perintah\n'
@@ -604,8 +686,143 @@ client.on('interactionCreate', async interaction => {
                 console.error('❌ Error saat membuat QR Code:', error);
                 await interaction.editReply('⚠️ Terjadi kesalahan saat membuat QR Code.');
             }
-        }        
-                     
+        }
+                
+        if (commandName === 'gachawaifu') {
+            await interaction.deferReply();
+            const waifu = await fetchRandomWaifu();
+        
+            if (!waifu) {
+                return interaction.editReply('Gagal mendapatkan waifu. Coba lagi nanti.');
+            }
+        
+            // Simpan waifu untuk user spesifik
+            userLastGachaWaifu.set(interaction.user.id, waifu);
+        
+            const embed = new EmbedBuilder()
+                .setTitle(`Waifu Baru: ${waifu.name}`)
+                .setImage(waifu.image)
+                .addFields(
+                    { name: 'Favourites', value: waifu.favourites.toString(), inline: true }
+                )
+                .setFooter({ text: 'Gunakan /klaimwaifu untuk menyimpan waifu ini' });
+        
+            await interaction.editReply({ embeds: [embed] });
+        }
+
+        if (commandName === 'findwaifu') {
+            const namaWaifu = interaction.options.getString('nama');
+            await interaction.deferReply();
+        
+            const query = `
+                query {
+                    Character(search: "${namaWaifu}") {
+                        id
+                        name {
+                            full
+                        }
+                        image {
+                            large
+                        }
+                        description(asHtml: false)
+                    }
+                }
+            `;
+        
+            try {
+                const response = await fetch('https://graphql.anilist.co', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ query })
+                });
+        
+                const data = await response.json();
+                const character = data.data.Character;
+        
+                if (!character) {
+                    return interaction.editReply(`Waifu dengan nama "${namaWaifu}" tidak ditemukan.`);
+                }
+        
+                const embed = new EmbedBuilder()
+                    .setTitle(character.name.full)
+                    .setImage(character.image.large)
+                    .setDescription(character.description ? character.description.substring(0, 1000) : 'Tidak ada deskripsi')
+                    .addFields(
+                        { name: 'ID', value: character.id.toString(), inline: true }
+                    );
+        
+                await interaction.editReply({ embeds: [embed] });
+            } catch (error) {
+                console.error('Error mencari waifu:', error);
+                await interaction.editReply('Terjadi kesalahan saat mencari waifu.');
+            }
+        }
+        
+        if (commandName === 'klaimwaifu') {
+            const lastWaifu = userLastGachaWaifu.get(interaction.user.id);
+            
+            if (!lastWaifu) {
+                return interaction.reply('Kamu belum mendapatkan waifu. Gunakan /gachawaifu terlebih dahulu.');
+            }
+
+            const userId = interaction.user.id;
+
+            db.run(`
+                INSERT INTO user_waifus (user_id, waifu_id, waifu_name, waifu_image) 
+                VALUES (?, ?, ?, ?)
+            `, [userId, lastWaifu.id, lastWaifu.name, lastWaifu.image], (err) => {
+                if (err) {
+                    console.error('Error menyimpan waifu:', err);
+                    return interaction.reply('Gagal menyimpan waifu. Mungkin waifu sudah pernah diklaim.');
+                }
+
+                // Hapus waifu dari map setelah diklaim
+                userLastGachaWaifu.delete(interaction.user.id);
+
+                const embed = new EmbedBuilder()
+                    .setTitle('Waifu Berhasil Diklaim!')
+                    .setDescription(`Selamat! Kamu berhasil mengklaim ${lastWaifu.name}`)
+                    .setImage(lastWaifu.image);
+
+                interaction.reply({ embeds: [embed] });
+            });
+        }
+        
+        if (commandName === 'topwaifu') {
+            db.all(`
+                SELECT user_id, COUNT(*) as waifu_count 
+                FROM user_waifus 
+                GROUP BY user_id 
+                ORDER BY waifu_count DESC 
+                LIMIT 10
+            `, async (err, rows) => {
+                if (err) {
+                    console.error('Error mendapatkan top waifu:', err);
+                    return interaction.reply('Terjadi kesalahan saat mengambil data.');
+                }
+        
+                const embed = new EmbedBuilder()
+                    .setTitle('🏆 Top Waifu Collectors')
+                    .setColor(0x3498db);
+        
+                if (rows.length === 0) {
+                    embed.setDescription('Belum ada waifu yang diklaim.');
+                } else {
+                    const leaderboard = await Promise.all(rows.map(async (row, index) => {
+                        const user = await client.users.fetch(row.user_id);
+                        return `${index + 1}. ${user.username}: ${row.waifu_count} waifu`;
+                    }));
+        
+                    embed.setDescription(leaderboard.join('\n'));
+                }
+        
+                interaction.reply({ embeds: [embed] });
+            });
+        }
+                             
 
     } catch (error) {
         console.error('❌ Error umum pada interaksi:', error);
